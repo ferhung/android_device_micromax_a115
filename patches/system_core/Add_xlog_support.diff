@@ -1,0 +1,53 @@
+From 52da4f1117e8a383aeeb3050c6df7c3bef1d0c1c Mon Sep 17 00:00:00 2001
+From: Jens Andersen <jens.andersen@gmail.com>
+Date: Tue, 08 Oct 2013 13:31:08 +0200
+Subject: [PATCH] liblog: Add xlog support
+
+Change-Id: I003ab096a5dc71f25438ae3c6dbd72005d82ee77
+---
+
+diff --git a/liblog/Android.mk b/liblog/Android.mk
+index 19f880b..c9d55fd 100644
+--- a/liblog/Android.mk
++++ b/liblog/Android.mk
+@@ -77,6 +77,9 @@
+ LOCAL_CFLAGS += $(LIBLOG_CFLAGS)
+ LOCAL_MODULE := liblog
+ LOCAL_SRC_FILES := $(liblog_sources)
++ifeq ($(TARGET_BOARD_PLATFORM),mt6577)
++LOCAL_CFLAGS += -DMTK_MT6577
++endif
+ include $(BUILD_STATIC_LIBRARY)
+ 
+ include $(CLEAR_VARS)
+diff --git a/liblog/logd_write.c b/liblog/logd_write.c
+index db1f121..5557a87 100644
+--- a/liblog/logd_write.c
++++ b/liblog/logd_write.c
+@@ -348,6 +348,26 @@
+     return __android_log_buf_write(bufID, prio, tag, buf);
+ }
+ 
++#ifdef MTK_MT6577
++struct xlog_record {
++        const char *tag_str;
++        const char *fmt_str;
++        int prio;
++};
++
++int __xlog_buf_printf(int bufid, const struct xlog_record *rec, ...)
++{
++    va_list ap;
++    char buf[LOG_BUF_SIZE];
++
++    va_start(ap, rec->fmt_str);
++    vsnprintf(buf, LOG_BUF_SIZE, rec->fmt_str, ap);
++    va_end(ap);
++
++    return __android_log_buf_write(bufid, rec->prio, rec->tag_str, buf);
++}
++#endif
++
+ void __android_log_assert(const char *cond, const char *tag,
+ 			  const char *fmt, ...)
+ {

@@ -1,0 +1,38 @@
+From aec1c4fff9ff5962e12da3a102290d8470a14a30 Mon Sep 17 00:00:00 2001
+From: Dr-Shadow <xxdrshadowxx@gmail.com>
+Date: Mon, 24 Mar 2014 22:46:56 +0100
+Subject: [PATCH] driver_nl80211 : MTK Hack
+
+Change-Id: I386eda3bfbf41b21e48cf00e2b7142f21eb91815
+---
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 253d0a9..a49c76f 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -5063,6 +5063,10 @@
+ 	    !is_broadcast_ether_addr(addr))
+ 		return ret;
+ 
++#ifdef MTK_MT6577
++	return ret;
++#endif
++
+ 	msg = nlmsg_alloc();
+ 	if (!msg)
+ 		return -ENOMEM;
+diff --git a/wpa_supplicant/Android.mk b/wpa_supplicant/Android.mk
+index a8bd89e..90ab884 100644
+--- a/wpa_supplicant/Android.mk
++++ b/wpa_supplicant/Android.mk
+@@ -46,6 +46,10 @@
+ L_CFLAGS += -DLEGACY_STA_EVENTS
+ endif
+ 
++ifeq ($(TARGET_BOARD_PLATFORM),mt6577)
++L_CFLAGS += -DMTK_MT6577
++endif
++
+ # Use Android specific directory for control interface sockets
+ L_CFLAGS += -DCONFIG_CTRL_IFACE_CLIENT_DIR=\"/data/misc/wifi/sockets\"
+ L_CFLAGS += -DCONFIG_CTRL_IFACE_DIR=\"/data/system/wpa_supplicant\"

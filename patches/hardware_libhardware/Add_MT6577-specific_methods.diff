@@ -1,0 +1,158 @@
+From 1b8ca4b3e6c8ca6175dae96beda4fd032de2d6fc Mon Sep 17 00:00:00 2001
+From: xplodwild <xplod@ouverta.fr>
+Date: Tue, 08 Oct 2013 23:25:58 +0200
+Subject: [PATCH] [2/2] gralloc: Add MT6577-specific methods
+
+Change-Id: Iaff3483ffdab4ce5574e138f3b716061bf1b616f
+---
+
+diff --git a/Android.mk b/Android.mk
+index aec6781..6109443 100644
+--- a/Android.mk
++++ b/Android.mk
+@@ -13,6 +13,10 @@
+ LOCAL_CFLAGS  += -DQEMU_HARDWARE
+ QEMU_HARDWARE := true
+ 
++ifeq ($(TARGET_BOARD_PLATFORM),mt6577)
++LOCAL_CFLAGS += -DMTK_MT6577
++endif
++
+ LOCAL_SHARED_LIBRARIES += libdl
+ 
+ LOCAL_SRC_FILES += hardware.c
+diff --git a/include/hardware/camera_common.h b/include/hardware/camera_common.h
+index 3a1233f..7656f26 100644
+--- a/include/hardware/camera_common.h
++++ b/include/hardware/camera_common.h
+@@ -174,7 +174,8 @@
+      *
+      */
+     const camera_metadata_t *static_camera_characteristics;
+-} camera_info_t;
++
++} _camera_info_t;
+ 
+ /**
+  * camera_device_status_t:
+diff --git a/include/hardware/gralloc.h b/include/hardware/gralloc.h
+index b27d83c..1571c75 100644
+--- a/include/hardware/gralloc.h
++++ b/include/hardware/gralloc.h
+@@ -348,6 +348,54 @@
+     return device->common.close(&device->common);
+ }
+ 
++#ifdef MTK_MT6577
++
++#define GRALLOC_HARDWARE_EXTRA "extra"
++
++// mtk extra buffer usage flags
++enum {
++    // BYTE#2 for S3D control
++    EXTRA_USAGE_S3D_UNKNOWN        = 0x00100000,    // for content layout
++    EXTRA_USAGE_S3D_SIDE_BY_SIDE   = 0x00200000,
++    EXTRA_USAGE_S3D_TOP_AND_BOTTOM = 0x00400000,
++    EXTRA_USAGE_S3D_LR_SWAPPED     = 0x00800000,
++
++    EXTRA_USAGE_S3D_RESERVED_BIT0  = 0x00010000,    // reserved bits
++    EXTRA_USAGE_S3D_RESERVED_BIT1  = 0x00020000,
++    EXTRA_USAGE_S3D_RESERVED_BIT2  = 0x00040000,
++    EXTRA_USAGE_S3D_RESERVED_BIT3  = 0x00080000,
++
++    // for init
++    EXTRA_USAGE_INIT_VALUE         = EXTRA_USAGE_S3D_UNKNOWN,
++};
++
++typedef struct extra_device_t {
++    struct hw_device_t common;
++
++    /*
++     * (*getIonFd)() is called for getting ion share fd from buffer handle
++     * It should return the beginning index of native_handle.data[]
++     * for ion shard fds and number of ion share fds
++     */
++
++    int (*getIonFd)(struct extra_device_t* dev,
++            buffer_handle_t handle, int *idx, int *num);
++
++    void* reserved_proc[7];
++} extra_device_t;
++
++static inline int gralloc_extra_open(const struct hw_module_t* module,
++        struct extra_device_t** device) {
++    return module->methods->open(module,
++            GRALLOC_HARDWARE_EXTRA, (struct hw_device_t**)device);
++}
++
++static inline int gralloc_extra_close(struct extra_device_t* device) {
++    return device->common.close(&device->common);
++}
++
++#endif // MTK_MT6577
++
+ __END_DECLS
+ 
+ #endif  // ANDROID_GRALLOC_INTERFACE_H
+diff --git a/include/hardware/hwcomposer.h b/include/hardware/hwcomposer.h
+index 061c21d..1ebd97e 100644
+--- a/include/hardware/hwcomposer.h
++++ b/include/hardware/hwcomposer.h
+@@ -276,7 +276,57 @@
+     /* Allow for expansion w/o breaking binary compatibility.
+      * Pad layer to 96 bytes, assuming 32-bit pointers.
+      */
++#ifndef MTK_MT6577
+     int32_t reserved[24 - 19];
++#else
++    int32_t reserved[24 - 19];
++
++    typedef struct hwc_layer_ext {
++        /* string for distinguish handler */
++        char overlayType[4];
++
++        /* producer type */
++        int32_t connectApi;
++
++        /* layer id */
++        int32_t identity;
++
++        /* buffer width */
++        int32_t width;
++
++        /* buffer height */
++        int32_t height;
++
++        /* buffer stride */
++        int32_t stride;
++
++        /* buffer format */
++        int32_t format;
++
++        /* rectangle filling color */
++        hwc_color_t fillColor;
++
++        /* linear transform matrix */
++        float transformMatrix[9];
++        
++        union {
++            uint32_t extraFlags;
++            struct {
++                uint8_t planeOrientation;
++                uint8_t stereoLayerFlags;
++                uint8_t stereoBufferFlags;
++                int8_t stereoOffset;
++            };
++        };
++
++        /* mmu mapping address */
++        uint32_t mva;
++
++        /* pad to 128 bytes */
++        int32_t reserved[32 - 19];
++    } hwc_layer_ext_t;
++    hwc_layer_ext_t ext;
++#endif // MTK_MT6577
+ 
+ } hwc_layer_1_t;
+ 

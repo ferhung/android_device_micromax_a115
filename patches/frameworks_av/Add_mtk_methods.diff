@@ -1,0 +1,53 @@
+From 91e63a9793c01e9abba1e22e8bd4cb892462dda6 Mon Sep 17 00:00:00 2001
+From: Dr-Shadow <xxdrshadowxx@gmail.com>
+Date: Wed, 04 Jun 2014 20:07:36 +0200
+Subject: [PATCH] audio : Add mtk methods
+
+Change-Id: I649cd819251cfea3553c89d13b9a9d679186f11e
+---
+
+diff --git a/media/libmedia/Android.mk b/media/libmedia/Android.mk
+index 2281a6e..c418990 100644
+--- a/media/libmedia/Android.mk
++++ b/media/libmedia/Android.mk
+@@ -22,6 +22,10 @@
+ 
+ include $(CLEAR_VARS)
+ 
++ifeq ($(TARGET_BOARD_PLATFORM),mt6577)
++LOCAL_CFLAGS += -DMTK_MT6577
++endif
++
+ LOCAL_SRC_FILES:= \
+     AudioTrack.cpp \
+     AudioTrackShared.cpp \
+diff --git a/media/libmedia/AudioSystem.cpp b/media/libmedia/AudioSystem.cpp
+index b4929ad..60aa5f9 100644
+--- a/media/libmedia/AudioSystem.cpp
++++ b/media/libmedia/AudioSystem.cpp
+@@ -863,4 +863,25 @@
+     ALOGW("AudioPolicyService server died!");
+ }
+ 
++#ifdef MTK_MT6577
++extern "C" void _ZN7android11AudioSystem24getVoiceUnlockDLInstanceEv()
++{ return; }
++extern "C" int _ZN7android11AudioSystem23GetVoiceUnlockDLLatencyEv()
++{ return 0; }
++extern "C" int _ZN7android11AudioSystem17SetVoiceUnlockSRCEjj (uint, uint)
++{ return 0; }
++extern "C" bool _ZN7android11AudioSystem18startVoiceUnlockDLEv()
++{ return 0; }
++extern "C" int _ZN7android11AudioSystem15ReadRefFromRingEPvjS1_(void*, uint32_t,void*)
++{ return 0; }
++extern "C" int _ZN7android11AudioSystem20GetVoiceUnlockULTimeEPv(void*)
++{ return 0; }
++extern "C" void _ZN7android11AudioSystem25freeVoiceUnlockDLInstanceEv()
++{ return; }
++extern "C" bool _ZN7android11AudioSystem17stopVoiceUnlockDLEv()
++{ return 0; }
++extern "C" void _ZN7android15IATVCtrlService11asInterfaceERKNS_2spINS_7IBinderEEE()
++{ return; }
++#endif
++
+ }; // namespace android

@@ -1,0 +1,25 @@
+From a88c466ffe6dcd09459ee4b5ee5e21e35c50656a Mon Sep 17 00:00:00 2001
+From: Dr-Shadow <xxdrshadowxx@gmail.com>
+Date: Thu, 13 Mar 2014 08:38:41 +0100
+Subject: [PATCH] Build : Allow to use mkimage to append an header to ramdisk (MTK SoC)
+
+Change-Id: I18edb3e8b91d9c4e8002fd128c7d0e2a2f896b7e
+---
+
+diff --git a/core/Makefile b/core/Makefile
+index e8b5432..3a451f0 100644
+--- a/core/Makefile
++++ b/core/Makefile
+@@ -425,6 +425,12 @@
+ $(INSTALLED_RAMDISK_TARGET): $(MKBOOTFS) $(INTERNAL_RAMDISK_FILES) | $(MINIGZIP)
+ 	$(call pretty,"Target ram disk: $@")
+ 	$(hide) $(MKBOOTFS) $(TARGET_ROOT_OUT) | $(MINIGZIP) > $@
++ifneq ($(TARGET_MKIMAGE),)
++		$(call pretty,"Appending MTK header to ramdisk")
++		$(hide) $(TARGET_MKIMAGE) $@ ROOTFS > $(PRODUCT_OUT)/ramdisk_tmp.img
++		$(hide) mv $@ $(PRODUCT_OUT)/ramdisk_without_header.img
++		$(hide) mv $(PRODUCT_OUT)/ramdisk_tmp.img $@
++endif
+ 
+ .PHONY: ramdisk-nodeps
+ ramdisk-nodeps: $(MKBOOTFS) | $(MINIGZIP)

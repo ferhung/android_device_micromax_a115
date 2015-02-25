@@ -1,0 +1,123 @@
+From 3acf51d1885f91533dd0f35ca2b7e87341a414d5 Mon Sep 17 00:00:00 2001
+From: xplodwild <xplod@ouverta.fr>
+Date: Sun, 05 Jan 2014 17:27:13 +0100
+Subject: [PATCH] [NOMERGE/HACK] BatteryService: Don't register on healthd
+
+Somehow on our beloved mt6577 platform, the kernel binder
+subsystem crashes (kernel panic) when BatteryService tries
+to register with batterypropreg service (from healthd).
+
+Change-Id: Ia6eb4a0de55301018ff70ec91a6fb67eb09b4e1f
+---
+
+diff --git a/services/java/com/android/server/BatteryService.java b/services/java/com/android/server/BatteryService.java
+index 287935f..ef9a119 100644
+--- a/services/java/com/android/server/BatteryService.java
++++ b/services/java/com/android/server/BatteryService.java
+@@ -164,6 +164,7 @@
+                 com.android.internal.R.integer.config_shutdownBatteryTemperature);
+         mLightEnabled = mContext.getResources().getBoolean(
+                 com.android.internal.R.bool.config_intrusiveBatteryLed);
++        Slog.i(TAG, "BatteryService ... 3");
+ 
+         // watch for invalid charger messages if the invalid_charger switch exists
+         if (new File("/sys/devices/virtual/switch/invalid_charger/state").exists()) {
+@@ -171,18 +172,27 @@
+                     "DEVPATH=/devices/virtual/switch/invalid_charger");
+         }
+ 
++        Slog.i(TAG, "BatteryService ... 4");
++
+         mBatteryPropertiesListener = new BatteryListener();
+ 
+-        IBinder b = ServiceManager.getService("batterypropreg");
+-        mBatteryPropertiesRegistrar = IBatteryPropertiesRegistrar.Stub.asInterface(b);
++        Slog.i(TAG, "BatteryService ... 5");
+ 
++        IBinder b = ServiceManager.getService("batterypropreg");
++        Slog.i(TAG, "BatteryService ... 6");
++        mBatteryPropertiesRegistrar = IBatteryPropertiesRegistrar.Stub.asInterface(b);
++        Slog.i(TAG, "BatteryService ... 7");
++/*
+         try {
+             mBatteryPropertiesRegistrar.registerListener(mBatteryPropertiesListener);
+         } catch (RemoteException e) {
+             // Should never happen.
+         }
++*/
++        Slog.i(TAG, "BatteryService ... 8");
+         SettingsObserver observer = new SettingsObserver(new Handler());
+         observer.observe();
++        Slog.i(TAG, "BatteryService ... 9 DONE");
+     }
+ 
+     void systemReady() {
+@@ -205,7 +215,8 @@
+     private boolean isPoweredLocked(int plugTypeSet) {
+         // assume we are powered if battery state is unknown so
+         // the "stay on while plugged in" option will work.
+-        if (mBatteryProps.batteryStatus == BatteryManager.BATTERY_STATUS_UNKNOWN) {
++        if (mBatteryProps == null ||
++               mBatteryProps.batteryStatus == BatteryManager.BATTERY_STATUS_UNKNOWN) {
+             return true;
+         }
+         if ((plugTypeSet & BatteryManager.BATTERY_PLUGGED_AC) != 0 && mBatteryProps.chargerAcOnline) {
+@@ -234,7 +245,11 @@
+      */
+     public int getBatteryLevel() {
+         synchronized (mLock) {
+-            return mBatteryProps.batteryLevel;
++            if (mBatteryProps != null) {
++                return mBatteryProps.batteryLevel;
++            } else {
++                return 0;
++            }
+         }
+     }
+ 
+@@ -243,7 +258,11 @@
+      */
+     public boolean isBatteryLow() {
+         synchronized (mLock) {
+-            return mBatteryProps.batteryPresent && mBatteryProps.batteryLevel <= mLowBatteryWarningLevel;
++            if (mBatteryProps != null) {
++                return mBatteryProps.batteryPresent && mBatteryProps.batteryLevel <= mLowBatteryWarningLevel;
++            } else {
++                return false;
++            }
+         }
+     }
+ 
+@@ -259,7 +278,8 @@
+     private void shutdownIfNoPowerLocked() {
+         // shut down gracefully if our battery is critically low and we are not powered.
+         // wait until the system has booted before attempting to display the shutdown dialog.
+-        if (mBatteryProps.batteryLevel == 0 && !isPoweredLocked(BatteryManager.BATTERY_PLUGGED_ANY)) {
++        if (mBatteryProps != null &&
++                mBatteryProps.batteryLevel == 0 && !isPoweredLocked(BatteryManager.BATTERY_PLUGGED_ANY)) {
+             mHandler.post(new Runnable() {
+                 @Override
+                 public void run() {
+@@ -278,7 +298,8 @@
+         // shut down gracefully if temperature is too high (> 68.0C by default)
+         // wait until the system has booted before attempting to display the
+         // shutdown dialog.
+-        if (mBatteryProps.batteryTemperature > mShutdownBatteryTemperature) {
++        if (mBatteryProps != null &&
++                mBatteryProps.batteryTemperature > mShutdownBatteryTemperature) {
+             mHandler.post(new Runnable() {
+                 @Override
+                 public void run() {
+@@ -307,6 +328,12 @@
+         boolean logOutlier = false;
+         long dischargeDuration = 0;
+ 
++        if (mBatteryProps == null) {
++            mPlugType = BatteryManager.BATTERY_PLUGGED_AC;
++            return;
++        }
++
++
+         mBatteryLevelCritical = (mBatteryProps.batteryLevel <= mCriticalBatteryLevel);
+         if (mBatteryProps.chargerAcOnline) {
+             mPlugType = BatteryManager.BATTERY_PLUGGED_AC;

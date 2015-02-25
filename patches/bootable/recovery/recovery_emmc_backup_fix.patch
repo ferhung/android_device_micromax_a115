@@ -1,0 +1,54 @@
+diff --git a/bootable/recovery/mmcutils/mmcutils.c b/bootable/recovery/mmcutils/mmcutils.c
+index f9c7b70..0e0bc58 100644
+--- a/bootable/recovery/mmcutils/mmcutils.c
++++ b/bootable/recovery/mmcutils/mmcutils.c
+@@ -469,6 +469,31 @@ ERROR3:
+ 
+ }
+ 
++int get_mmc_size_from_dumchar_info(const char* name)
++{
++    FILE* fp = fopen("/proc/dumchar_info", "rt");
++    if(fp != NULL)
++    {
++        char line[512];
++        while (fgets(line, sizeof(line), fp) != NULL)
++        {
++            char label[32], device[32];
++            unsigned long size = 0;
++
++            sscanf(line, "%s %lx %*lx %*lu %s", label, &size, device);
++            
++            // Skip header, annotation  and blank lines
++            if ((strncmp(device, "/dev/", 5) != 0) || (strlen(line) < 8))
++                continue;
++                
++            if (strcmp(label, name) != 0)
++                continue;
++                
++            return size;
++        }
++    }
++    return 0;
++}
+ 
+ int
+ mmc_raw_dump_internal (const char* in_file, const char *out_file) {
+@@ -489,11 +514,14 @@ mmc_raw_dump_internal (const char* in_file, const char *out_file) {
+     if (out == NULL)
+         goto ERROR2;
+ 
++    if(strncmp(in_file, "/dev/", 5) == 0 && (sz = get_mmc_size_from_dumchar_info((char*)in_file + 5)) == 0)
++    {
+-    fseek(in, 0L, SEEK_END);
++        fseek(in, 0L, SEEK_END);
+-    sz = ftell(in);
++        sz = ftell(in);
+-    fseek(in, 0L, SEEK_SET);
++        fseek(in, 0L, SEEK_SET);
++    }
+ 
+     if (sz % 512)
+     {
+         while ( ( ch = fgetc ( in ) ) != EOF )
+             fputc ( ch, out );

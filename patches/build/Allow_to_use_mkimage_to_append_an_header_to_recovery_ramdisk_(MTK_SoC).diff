@@ -1,0 +1,24 @@
+From 706cb0e6c9b64e2e851c72df41643d7de5ab8286 Mon Sep 17 00:00:00 2001
+From: Dr-Shadow <xxdrshadowxx@gmail.com>
+Date: Fri, 06 Jun 2014 23:55:42 +0200
+Subject: [PATCH] Build : Allow to use mkimage to append an header to recovery ramdisk (MTK SoC)
+
+Change-Id: I43d90751d695e277760e9338b1d16d63fb8dbbde
+---
+
+diff --git a/core/Makefile b/core/Makefile
+index 0d5e770..f614f5f 100644
+--- a/core/Makefile
++++ b/core/Makefile
+@@ -805,6 +805,11 @@
+ 	$(recovery_uncompressed_ramdisk)
+ 	@echo -e ${PRT_IMG}"----- Making recovery ramdisk ------"${CL_RST}
+ 	$(MINIGZIP) < $(recovery_uncompressed_ramdisk) > $@
++ifneq ($(TARGET_MKIMAGE),)
++		$(call pretty,"Appending MTK header to ramdisk")
++		$(hide) mv $@ $(recovery_ramdisk).tmp
++		$(hide) $(TARGET_MKIMAGE) $(recovery_ramdisk).tmp RECOVERY > $@
++endif
+ 
+ ifndef BOARD_CUSTOM_BOOTIMG_MK
+ $(INSTALLED_RECOVERYIMAGE_TARGET): $(MKBOOTIMG) \

@@ -1,0 +1,996 @@
+From 72b2c96463cc3219e96647c16c9e8bc80d554e57 Mon Sep 17 00:00:00 2001
+From: Dr-Shadow <xxdrshadowxx@gmail.com>
+Date: Fri, 13 Jun 2014 16:52:56 +0200
+Subject: [PATCH] [1/2] [DO NOT MERGE/TEST/WIP] MTK hwcomposer
+
+Change-Id: I148bc309a8d95d3f259a94311e041c954c79397f
+---
+
+diff --git a/include/gui/BufferQueue.h b/include/gui/BufferQueue.h
+index 942a091..8471c3f 100644
+--- a/include/gui/BufferQueue.h
++++ b/include/gui/BufferQueue.h
+@@ -321,6 +321,9 @@
+     // dump our state in a String
+     virtual void dump(String8& result, const char* prefix) const;
+ 
++#ifdef MTK_MT6577
++    virtual int getConnectedApi () const;
++#endif
+ 
+ private:
+     // freeBufferLocked frees the GraphicBuffer and sync resources for the
+diff --git a/include/private/gui/LayerState.h b/include/private/gui/LayerState.h
+index bf4bf03..5f84c8a 100644
+--- a/include/private/gui/LayerState.h
++++ b/include/private/gui/LayerState.h
+@@ -49,6 +49,51 @@
+         eCropChanged                = 0x00000100,
+     };
+ 
++#ifdef MTK_MT6577
++    // ENUMs for flagsEx values.
++    enum {
++        eExInvalid           = 0x80000000,   // as need to update
++
++        eExPQ_Mask           = 0x01000000,   // for PQ on/off
++        eExPQ_On             = 0x01000000,
++
++        eExS3D_Reserved_Mask = 0x00040000,   // reserved
++        eExS3D_ReservedBit_2 = 0x00040000,
++
++
++        eExPQ_Reserved_Mask  = 0x0E000000,   // reserved
++        eExPQ_Reserved_bit0  = 0x02000000,
++        eExPQ_Reserved_bit1  = 0x04000000,
++        eExPQ_Reserved_bit2  = 0x08000000,
++
++        // BYTE#2 for S3D layer control
++        eExS3D_Mask          = 0x00FF0000,
++
++        eExS3D_Layout_Mask   = 0x00F00000,   // for content layout
++        eExS3D_Unknown       = 0x00100000,
++        eExS3D_SideBySide    = 0x00200000,
++        eExS3D_TopAndBottom  = 0x00400000,
++        eExS3D_LRSwapped     = 0x00800000,
++
++        eExS3D_Display_Mask  = 0x00080000,   // for display mode
++        eExS3D_2D            = 0x00000000,
++        eExS3D_3D            = 0x00080000,
++
++        eExS3D_Offset_Mask   = 0x00030000,   // for video offest adjustment
++        eExS3D_NoGIA         = 0x00010000,
++        eExS3D_NoMargin      = 0x00020000,
++
++        // BYTE#1 no use now
++
++        // BYTE#0 for S3D manual offset value settings
++        eExS3D_OffsetManualValue_Mask = 0x000000FF,
++        eExS3D_OffsetManualValue_Zero = 0x0000007F,
++
++        // for layer init
++        eExInitValue = (eExS3D_Unknown | eExS3D_OffsetManualValue_Zero),
++    };
++#endif
++
+     layer_state_t()
+         :   what(0),
+             x(0), y(0), z(0), w(0), h(0), layerStack(0),
+@@ -58,6 +103,11 @@
+         matrix.dsdx = matrix.dtdy = 1.0f;
+         matrix.dsdy = matrix.dtdx = 0.0f;
+         crop.makeInvalid();
++
++#ifdef MTK_MT6577
++        flagsEx = 0;
++        maskEx = 0;
++#endif
+     }
+ 
+     status_t    write(Parcel& output) const;
+@@ -83,6 +133,12 @@
+             uint8_t         reserved;
+             matrix22_t      matrix;
+             Rect            crop;
++
++#ifdef MTK_MT6577
++            uint32_t        flagsEx;
++            uint32_t        maskEx;
++#endif
++
+             // non POD must be last. see write/read
+             Region          transparentRegion;
+ };
+diff --git a/include/ui/GraphicBuffer.h b/include/ui/GraphicBuffer.h
+index 3a11056..d4fbcb4 100644
+--- a/include/ui/GraphicBuffer.h
++++ b/include/ui/GraphicBuffer.h
+@@ -159,6 +159,17 @@
+     // If we're wrapping another buffer then this reference will make sure it
+     // doesn't get freed.
+     sp<ANativeWindowBuffer> mWrappedBuffer;
++
++#ifdef MTK_G_MT6577
++public:
++    status_t getIonFd(int *idx, int *num);
++    unsigned int getMva() const { return mva; }
++    void setMva(unsigned int _mva);
++
++private:
++    unsigned int mva;
++    unsigned int msize;
++#endif
+ };
+ 
+ }; // namespace android
+diff --git a/libs/gui/Android.mk b/libs/gui/Android.mk
+index 271431d..cf65504 100644
+--- a/libs/gui/Android.mk
++++ b/libs/gui/Android.mk
+@@ -66,6 +66,10 @@
+     LOCAL_CFLAGS += -DUSE_MHEAP_SCREENSHOT
+ endif
+ 
++ifeq ($(TARGET_BOARD_PLATFORM),mt6577)
++LOCAL_CFLAGS += -DMTK_MT6577
++endif
++
+ LOCAL_MODULE:= libgui
+ 
+ ifeq ($(TARGET_BOARD_PLATFORM), tegra)
+diff --git a/libs/gui/BufferQueue.cpp b/libs/gui/BufferQueue.cpp
+index 6961190..d6fef95 100644
+--- a/libs/gui/BufferQueue.cpp
++++ b/libs/gui/BufferQueue.cpp
+@@ -844,6 +844,10 @@
+     }
+ }
+ 
++#ifdef MTK_MT6577
++int BufferQueue::getConnectedApi () const { return mConnectedApi; }
++#endif
++
+ void BufferQueue::freeBufferLocked(int slot) {
+     ST_LOGV("freeBufferLocked: slot=%d", slot);
+     mSlots[slot].mGraphicBuffer = 0;
+diff --git a/libs/ui/GraphicBuffer.cpp b/libs/ui/GraphicBuffer.cpp
+index a999adc..2c3da0b 100644
+--- a/libs/ui/GraphicBuffer.cpp
++++ b/libs/ui/GraphicBuffer.cpp
+@@ -43,6 +43,10 @@
+     format = 
+     usage  = 0;
+     handle = NULL;
++#ifdef MTK_MT6577
++    mva = 0;
++    msize = 0;
++#endif
+ }
+ 
+ GraphicBuffer::GraphicBuffer(uint32_t w, uint32_t h,
+@@ -56,6 +60,10 @@
+     format =
+     usage  = 0;
+     handle = NULL;
++#ifdef MTK_MT6577
++    mva = 0;
++    msize = 0;
++#endif
+     mInitCheck = initSize(w, h, reqFormat, reqUsage);
+ }
+ 
+@@ -72,6 +80,10 @@
+     usage  = 0;
+     handle = NULL;
+     mInitCheck = initSize(w, h, reqFormat, reqUsage, bufferSize);
++#ifdef MTK_MT6577
++    mva = 0;
++    msize = 0;
++#endif
+ }
+ #endif
+ 
+@@ -88,6 +100,10 @@
+     format = inFormat;
+     usage  = inUsage;
+     handle = inHandle;
++#ifdef MTK_MT6577
++    mva = 0;
++    msize = 0;
++#endif
+ }
+ 
+ GraphicBuffer::GraphicBuffer(ANativeWindowBuffer* buffer, bool keepOwnership)
+@@ -101,6 +117,10 @@
+     format = buffer->format;
+     usage  = buffer->usage;
+     handle = buffer->handle;
++#ifdef MTK_MT6577
++    mva = 0;
++    msize = 0;
++#endif
+ }
+ 
+ GraphicBuffer::~GraphicBuffer()
+@@ -337,6 +357,19 @@
+     return NO_ERROR;
+ }
+ 
++#ifdef MTK_MT6577
++status_t GraphicBuffer::getIonFd(int *idx, int *num)
++{
++    return getBufferMapper().getIonFd(handle, idx, num);
++}
++
++void GraphicBuffer::setMva(unsigned int _mva)
++{
++    mva = _mva;
++}
++
++#endif
++
+ // ---------------------------------------------------------------------------
+ 
+ }; // namespace android
+diff --git a/libs/ui/GraphicBufferMapper.cpp b/libs/ui/GraphicBufferMapper.cpp
+index cfbf32c..37558dd 100644
+--- a/libs/ui/GraphicBufferMapper.cpp
++++ b/libs/ui/GraphicBufferMapper.cpp
+@@ -44,6 +44,13 @@
+     if (err == 0) {
+         mAllocMod = (gralloc_module_t const *)module;
+     }
++
++#ifdef MTK_MT6577
++    mExtraDev = NULL;
++    if (err == 0) {
++        gralloc_extra_open(module, &mExtraDev);
++    }
++#endif
+ }
+ 
+ status_t GraphicBufferMapper::registerBuffer(buffer_handle_t handle)
+diff --git a/services/surfaceflinger/Android.mk b/services/surfaceflinger/Android.mk
+index a68064e..39b8b8a 100644
+--- a/services/surfaceflinger/Android.mk
++++ b/services/surfaceflinger/Android.mk
+@@ -37,6 +37,10 @@
+ LOCAL_CFLAGS:= -DLOG_TAG=\"SurfaceFlinger\"
+ LOCAL_CFLAGS += -DGL_GLEXT_PROTOTYPES -DEGL_EGLEXT_PROTOTYPES
+ 
++ifeq ($(TARGET_BOARD_PLATFORM),mt6577)
++LOCAL_CFLAGS += -DMTK_MT6577
++endif
++
+ ifeq ($(TARGET_BOARD_PLATFORM),omap4)
+ 	LOCAL_CFLAGS += -DHAS_CONTEXT_PRIORITY
+ endif
+@@ -139,6 +143,10 @@
+ 	libbinder \
+ 	libutils
+ 
++ifeq ($(TARGET_BOARD_PLATFORM),mt6577)
++LOCAL_CFLAGS += -DMTK_MT6577
++endif
++
+ LOCAL_MODULE:= surfaceflinger
+ 
+ include $(BUILD_EXECUTABLE)
+@@ -149,6 +157,10 @@
+ include $(CLEAR_VARS)
+ LOCAL_CFLAGS:= -DLOG_TAG=\"SurfaceFlinger\"
+ 
++ifeq ($(TARGET_BOARD_PLATFORM),mt6577)
++LOCAL_CFLAGS += -DMTK_MT6577
++endif
++
+ LOCAL_SRC_FILES:= \
+     DdmConnection.cpp
+ 
+diff --git a/services/surfaceflinger/DisplayDevice.cpp b/services/surfaceflinger/DisplayDevice.cpp
+index efdd8bd..fc16102 100755
+--- a/services/surfaceflinger/DisplayDevice.cpp
++++ b/services/surfaceflinger/DisplayDevice.cpp
+@@ -151,6 +151,9 @@
+ #else
+     setProjection(DisplayState::eOrientationDefault, mViewport, mFrame);
+ #endif
++#ifdef MTK_MT6577
++    mLayersSwapRequired = false;
++#endif
+ }
+ 
+ DisplayDevice::~DisplayDevice() {
+diff --git a/services/surfaceflinger/DisplayDevice.h b/services/surfaceflinger/DisplayDevice.h
+index 24ca033..c97700f 100644
+--- a/services/surfaceflinger/DisplayDevice.h
++++ b/services/surfaceflinger/DisplayDevice.h
+@@ -216,6 +216,11 @@
+     Rect mScissor;
+     Transform mGlobalTransform;
+     bool mNeedsFiltering;
++
++#ifdef MTK_MT6577
++public:
++    mutable bool mLayersSwapRequired;
++#endif
+ };
+ 
+ }; // namespace android
+diff --git a/services/surfaceflinger/DisplayHardware/HWComposer.cpp b/services/surfaceflinger/DisplayHardware/HWComposer.cpp
+index 07e9d9d..bd81cdd 100644
+--- a/services/surfaceflinger/DisplayHardware/HWComposer.cpp
++++ b/services/surfaceflinger/DisplayHardware/HWComposer.cpp
+@@ -791,7 +791,16 @@
+                 &disp.framebufferTarget->displayFrame;
+             disp.framebufferTarget->acquireFenceFd = -1;
+             disp.framebufferTarget->releaseFenceFd = -1;
++#ifdef MTK_MT6577
++	    disp.framebufferTarget->ext.connectApi = -1;
++            disp.framebufferTarget->ext.identity = -1;
++            disp.framebufferTarget->ext.width = disp.width;
++            disp.framebufferTarget->ext.height = disp.height;
++            disp.framebufferTarget->ext.stride = disp.width;
++            disp.framebufferTarget->ext.format = disp.format;
++#else
+             disp.framebufferTarget->planeAlpha = 0xFF;
++#endif
+         }
+ #ifdef OLD_HWC_API
+         if (hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_0)) {
+@@ -831,6 +840,13 @@
+     disp.fbTargetHandle = buf->handle;
+     disp.framebufferTarget->handle = disp.fbTargetHandle;
+     disp.framebufferTarget->acquireFenceFd = acquireFenceFd;
++
++#ifdef MTK_MT6577
++    disp.framebufferTarget->ext.width = buf->width;
++    disp.framebufferTarget->ext.height = buf->height;
++    disp.framebufferTarget->ext.stride = buf->stride;
++    disp.framebufferTarget->ext.format = buf->format;
++#endif
+     return NO_ERROR;
+ }
+ 
+@@ -1033,6 +1049,14 @@
+                         disp.outbufAcquireFence->dup();
+             }
+         }
++#ifdef MTK_MT6577
++	    for (size_t i=0 ; i<mNumDisplays ; i++) {
++	        DisplayData& disp(mDisplayData[i]);
++		if (disp.list && mFlinger->getAndClearLayersSwapRequired(i)) {
++		    disp.list->flags |= HWC_SWAP_REQUIRED;
++		}
++	    }
++#endif
+ #ifdef OLD_HWC_API
+         if (hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_0)) {
+             err = hwcSet(mHwc, mLists[0]->dpy, mLists[0]->sur, mNumDisplays,
+@@ -1063,6 +1087,11 @@
+                     disp.list->retireFenceFd = -1;
+                 }
+                 disp.list->flags &= ~HWC_GEOMETRY_CHANGED;
++#endif
++#ifdef MTK_MT6577
++                hwcFlags(mHwc, disp.list) &=
++			~(HWC_SWAP_REQUIRED | HWC_LAYERSCREENSHOT_EXIST |
++			  HWC_SCREEN_FROZEN | HWC_ORIENTATION_MASK);
+ #endif
+             }
+         }
+@@ -1332,6 +1361,16 @@
+         }
+ 
+     }
++#ifdef MTK_MT6577
++    virtual int getMva() { return 0; }
++    virtual void setLayerType(uint32_t type) { }
++    virtual void setSecure(bool secure) { }
++    virtual void setDirty(bool dirty) { }
++    virtual void setConnectedApi(int32_t api) { }
++    virtual void setIdentity(int32_t id) { }
++    virtual void setFillColor(struct hwc_color color) { }
++    virtual void setMatrix(const Transform& tr) { }
++#endif
+ };
+ // #endif // !HWC_REMOVE_DEPRECATED_VERSIONS
+ #endif
+@@ -1366,7 +1405,9 @@
+ // CAPRI_HWC does not respect planeAlpha despite being v1.2
+ #ifndef CAPRI_HWC
+         if (hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_2)) {
++#ifndef MTK_MT6577
+             getLayer()->planeAlpha = alpha;
++#endif
+         } else {
+ #endif
+             if (alpha < 0xFF) {
+@@ -1388,7 +1429,17 @@
+         l->visibleRegionScreen.rects = NULL;
+         l->acquireFenceFd = -1;
+         l->releaseFenceFd = -1;
++#ifdef MTK_MT6577
++        getLayer()->ext.connectApi = -1;
++        getLayer()->ext.identity = -1;
++        getLayer()->ext.width = 0;
++        getLayer()->ext.height = 0;
++        getLayer()->ext.stride = 0;
++        getLayer()->ext.format = 0;
++#else
+         l->planeAlpha = 0xFF;
++#endif
++
+     }
+     virtual void setSkip(bool skip) {
+         if (skip) {
+@@ -1446,6 +1497,13 @@
+             getLayer()->handle = 0;
+         } else {
+             getLayer()->handle = buffer->handle;
++#ifdef MTK_MT6577
++            getLayer()->ext.width = buffer->width;
++            getLayer()->ext.height = buffer->height;
++            getLayer()->ext.stride = buffer->stride;
++            getLayer()->ext.format = buffer->format;
++            getLayer()->ext.mva = buffer->getMva();
++#endif
+         }
+     }
+     virtual void onDisplayed() {
+@@ -1460,6 +1518,40 @@
+ 
+         getLayer()->acquireFenceFd = -1;
+     }
++
++#ifdef MTK_MT6577
++    virtual int getMva() {
++        return getLayer()->ext.mva;
++    }
++    virtual void setLayerType(uint32_t type) {
++    }
++    virtual void setSecure(bool secure) {
++    }
++    virtual void setDirty(bool dirty) {
++		if (dirty)
++			getLayer()->flags |= HWC_DIRTY_LAYER;
++		else
++			getLayer()->flags &= ~HWC_DIRTY_LAYER;
++    }
++    virtual void setConnectedApi(int32_t api) {
++        getLayer()->ext.connectApi = api;
++    }
++    virtual void setIdentity(int32_t id) {
++        getLayer()->ext.identity = id;
++    }
++    virtual void setFillColor(struct hwc_color color) {
++        getLayer()->ext.fillColor = color;
++    }
++    virtual void setMatrix(const Transform& tr) {
++        float *m = getLayer()->ext.transformMatrix;
++        for (int i = 0, j = 0; i < 9; i += 3, j++) {
++            m[i + 0] = tr[0][j];
++            m[i + 1] = tr[1][j];
++            m[i + 2] = tr[2][j];
++        }
++    }
++#endif
++
+ };
+ 
+ /*
+diff --git a/services/surfaceflinger/DisplayHardware/HWComposer.h b/services/surfaceflinger/DisplayHardware/HWComposer.h
+index 4194629..d207add 100644
+--- a/services/surfaceflinger/DisplayHardware/HWComposer.h
++++ b/services/surfaceflinger/DisplayHardware/HWComposer.h
+@@ -32,6 +32,11 @@
+ #include <utils/Timers.h>
+ #include <utils/Vector.h>
+ 
++#ifdef MTK_MT6577
++#include "Transform.h"
++struct hwc_color;
++#endif
++
+ extern "C" int clock_nanosleep(clockid_t clock_id, int flags,
+                            const struct timespec *request,
+                            struct timespec *remain);
+@@ -171,6 +176,17 @@
+         virtual void setAcquireFenceFd(int fenceFd) = 0;
+         virtual void setPlaneAlpha(uint8_t alpha) = 0;
+         virtual void onDisplayed() = 0;
++
++#ifdef MTK_MT6577
++        virtual int getMva() = 0;
++        virtual void setLayerType(uint32_t type) = 0;
++        virtual void setSecure(bool secure) = 0;
++        virtual void setDirty(bool dirty) = 0;
++        virtual void setConnectedApi(int32_t api) = 0;
++        virtual void setIdentity(int32_t id) = 0;
++        virtual void setFillColor(struct hwc_color color) = 0;
++        virtual void setMatrix(const Transform& tr) = 0;
++#endif
+     };
+ 
+     /*
+diff --git a/services/surfaceflinger/Layer.cpp b/services/surfaceflinger/Layer.cpp
+index d6b428f..aaddbf3 100644
+--- a/services/surfaceflinger/Layer.cpp
++++ b/services/surfaceflinger/Layer.cpp
+@@ -49,9 +49,16 @@
+ #include <gralloc_priv.h>
+ #endif
+ 
++#ifdef MTK_MT6577
++#include <hardware/hwcomposer.h>
++#endif
++
+ #define DEBUG_RESIZE    0
+ 
+ namespace android {
++#ifdef MTK_MT6577
++int32_t Layer::sIdentity = 1;
++#endif
+ 
+ // ---------------------------------------------------------------------------
+ 
+@@ -109,6 +116,9 @@
+         mProtectedByApp(false),
+         mHasSurface(false),
+         mClientRef(client)
++#ifdef MTK_MT6577
++	, mIdentity(uint32_t(android_atomic_inc(&sIdentity)))
++#endif
+ {
+     mCurrentCrop.makeInvalid();
+     mFlinger->getRenderEngine().genTextures(1, &mTextureName);
+@@ -134,6 +144,14 @@
+     mCurrentState.transform.set(0, 0);
+     mCurrentState.requested = mCurrentState.active;
+ 
++#ifdef MTK_MT6577
++    mCurrentState.flagsEx = layer_state_t::eExInitValue;
++    mCurrentState.usageEx = EXTRA_USAGE_INIT_VALUE;
++    mCurrentState.stConnectedApi = BufferQueue::NO_CONNECTED_API;
++    mCurrentState.stCurrentTransform = Transform::ROT_INVALID;
++    mBufferRefCount = 0;
++#endif
++
+     // drawing state & current state are identical
+     mDrawingState = mCurrentState;
+ 
+@@ -155,6 +173,11 @@
+     mSurfaceFlingerConsumer->setDefaultMaxBufferCount(2);
+ #else
+     mSurfaceFlingerConsumer->setDefaultMaxBufferCount(3);
++#endif
++
++#ifdef MTK_MT6577
++    // workaround to use quad buffer for SF layer
++    mSurfaceFlingerConsumer->setDefaultMaxBufferCount(4);
+ #endif
+ 
+     const sp<const DisplayDevice> hw(mFlinger->getDefaultDisplayDevice());
+@@ -179,6 +202,11 @@
+     if (layer) {
+         layer->onDisplayed();
+         mSurfaceFlingerConsumer->setReleaseFence(layer->getAndResetReleaseFence());
++
++#ifdef MTK_MT6577
++        if (mActiveBuffer != NULL)
++		mActiveBuffer->setMva(layer->getMva());
++#endif
+     }
+ }
+ 
+@@ -447,6 +475,16 @@
+     } else {
+         layer.setTransform(orientation);
+     }
++
++#ifdef MTK_MT6577
++    hwc_color_t color;
++    color.a = s.alpha;
++    layer.setFillColor(color);
++    layer.setTransform(orientation);
++    layer.setMatrix(tr);
++    layer.setIdentity (getIdentity ());
++    layer.setSecure((isSecure() || isProtected()));
++#endif
+ }
+ 
+ void Layer::setPerFrameData(const sp<const DisplayDevice>& hw,
+@@ -463,6 +501,10 @@
+     // NOTE: buffer can be NULL if the client never drew into this
+     // layer yet, or if we ran out of memory
+     layer.setBuffer(mActiveBuffer);
++#ifdef MTK_MT6577
++    layer.setConnectedApi(mSurfaceFlingerConsumer->getConnectedApi());
++    layer.setDirty((mBufferDirty || mBufferRefCount <= 1 || contentDirty));
++#endif
+ }
+ 
+ void Layer::setAcquireFence(const sp<const DisplayDevice>& hw,
+@@ -1193,6 +1235,14 @@
+         const Layer::State& s(getDrawingState());
+         Region dirtyRegion(Rect(s.active.w, s.active.h));
+ 
++#ifdef MTK_MT6577
++        // store buffer dirty infomation and pass to hwc later
++        mBufferDirty = !dirtyRegion.isEmpty();
++        if (mBufferDirty == true){
++            // LazySwap(5) increment buffer ref count when the texture is created
++            mBufferRefCount++;
++        }
++#endif
+         // transform the dirty region to window-manager space
+         outDirtyRegion = (s.transform.transform(dirtyRegion));
+     }
+diff --git a/services/surfaceflinger/Layer.h b/services/surfaceflinger/Layer.h
+index b6ff039..9d4f181 100644
+--- a/services/surfaceflinger/Layer.h
++++ b/services/surfaceflinger/Layer.h
+@@ -109,6 +109,13 @@
+         // dependent.
+         Region activeTransparentRegion;
+         Region requestedTransparentRegion;
++
++#ifdef MTK_MT6577
++        uint32_t flagsEx;
++        uint32_t usageEx;
++        uint32_t stConnectedApi;
++        uint32_t stCurrentTransform;
++#endif
+     };
+ 
+     // -----------------------------------------------------------------------
+@@ -291,6 +298,11 @@
+     void clearStats();
+     void logFrameStats();
+ 
++#ifdef MTK_MT6577
++    bool mBufferDirty;
++    mutable uint64_t mBufferRefCount;
++#endif
++
+ protected:
+     // constant
+     sp<SurfaceFlinger> mFlinger;
+@@ -378,6 +390,11 @@
+     // Set to true once we've returned this surface's handle
+     mutable bool mHasSurface;
+     const wp<Client> mClientRef;
++
++#ifdef MTK_MT6577
++    const uint32_t mIdentity;uint32_t getIdentity() const { return mIdentity; }
++    static int32_t sIdentity;
++#endif
+ };
+ 
+ // ---------------------------------------------------------------------------
+diff --git a/services/surfaceflinger/LayerDim.cpp b/services/surfaceflinger/LayerDim.cpp
+index 4e82bab..d21f1e8 100644
+--- a/services/surfaceflinger/LayerDim.cpp
++++ b/services/surfaceflinger/LayerDim.cpp
+@@ -28,6 +28,10 @@
+ #include "DisplayDevice.h"
+ #include "RenderEngine/RenderEngine.h"
+ 
++#ifdef MTK_MT6577
++#include <hardware/hwcomposer.h>
++#endif
++
+ namespace android {
+ // ---------------------------------------------------------------------------
+ 
+@@ -57,7 +61,36 @@
+     return !(s.flags & layer_state_t::eLayerHidden) && s.alpha;
+ }
+ 
++#ifdef MTK_MT6577
++void LayerDim::setGeometry(
++    const sp<const DisplayDevice>& hw,
++        HWComposer::HWCLayerInterface& layer)
++{
++    Layer::setGeometry(hw, layer);
+ 
++    layer.setLayerType(HWC_DIM_LAYER);
++
++    const State& s(getDrawingState());
++    hwc_color_t color;
++    color.a = s.alpha;
++    layer.setFillColor(color);
++    if (s.alpha != 0xFF) {
++        layer.setBlending(HWC_BLENDING_PREMULT);
++    }
++    
++    const Transform tr(hw->getTransform() * s.transform);
++    layer.setTransform(tr.getOrientation());
++    layer.setMatrix(tr);
++}
++
++void LayerDim::setPerFrameData(const sp<const DisplayDevice>& hw,
++        HWComposer::HWCLayerInterface& layer) 
++{
++    Layer::setPerFrameData(hw, layer);
++    layer.setBuffer(NULL);
++}
++
++#endif
+ // ---------------------------------------------------------------------------
+ 
+ }; // namespace android
+diff --git a/services/surfaceflinger/LayerDim.h b/services/surfaceflinger/LayerDim.h
+index 6561d7f..52dfd0f 100644
+--- a/services/surfaceflinger/LayerDim.h
++++ b/services/surfaceflinger/LayerDim.h
+@@ -39,6 +39,12 @@
+     virtual bool isSecure() const         { return false; }
+     virtual bool isFixedSize() const      { return true; }
+     virtual bool isVisible() const;
++#ifdef MTK_MT6577
++    virtual void setGeometry(const sp<const DisplayDevice>& hw,
++            HWComposer::HWCLayerInterface& layer);
++    virtual void setPerFrameData(const sp<const DisplayDevice>& hw,
++            HWComposer::HWCLayerInterface& layer);
++#endif
+ };
+ 
+ // ---------------------------------------------------------------------------
+diff --git a/services/surfaceflinger/SurfaceFlinger.cpp b/services/surfaceflinger/SurfaceFlinger.cpp
+index 9d6c199..54ce3c1 100644
+--- a/services/surfaceflinger/SurfaceFlinger.cpp
++++ b/services/surfaceflinger/SurfaceFlinger.cpp
+@@ -90,6 +90,10 @@
+ 
+ namespace android {
+ 
++#ifdef MTK_MT6577
++bool SurfaceFlinger::mContentsDirty;
++#endif
++
+ // This works around the lack of support for the sync framework on some
+ // devices.
+ #ifdef RUNNING_WITHOUT_SYNC_FRAMEWORK
+@@ -182,6 +186,9 @@
+     }
+     ALOGI_IF(mDebugRegion, "showupdates enabled");
+     ALOGI_IF(mDebugDDMS, "DDMS debugging enabled");
++#ifdef MTK_MT6577
++    mContentsDirty = false;
++#endif
+ }
+ 
+ void SurfaceFlinger::onFirstRef()
+@@ -1057,6 +1064,11 @@
+ #endif
+                         hw->getLayerStack(), dirtyRegion, opaqueRegion);
+ 
++#ifdef MTK_MT6577
++                hw->mLayersSwapRequired |= mContentsDirty;
++                mContentsDirty = false;
++#endif
++
+                 const size_t count = layers.size();
+                 for (size_t i=0 ; i<count ; i++) {
+                     const sp<Layer>& layer(layers[i]);
+@@ -1184,8 +1196,21 @@
+             }
+         }
+ 
++#ifdef MTK_MT6577
++        // check if any previous layer is processed by gles
++        const bool prevGlesComposition = hwc.hasGlesComposition(DisplayDevice::DISPLAY_PRIMARY);
++#endif
++
+         status_t err = hwc.prepare();
+         ALOGE_IF(err, "HWComposer::prepare failed (%s)", strerror(-err));
++
++#ifdef MTK_MT6577
++        // do not render transparent region if unnecessary
++        for (size_t dpy=0 ; dpy<mDisplays.size() ; dpy++) {
++            sp<const DisplayDevice> hw(mDisplays[dpy]);
++            checkLayersSwapRequired(hw, prevGlesComposition);
++        }
++#endif
+ 
+         for (size_t dpy=0 ; dpy<mDisplays.size() ; dpy++) {
+             sp<const DisplayDevice> hw(mDisplays[dpy]);
+@@ -1586,6 +1611,12 @@
+     // some layers might have been removed, so
+     // we need to update the regions they're exposing.
+     if (mLayersRemoved) {
++#ifdef MTK_MT6577
++       for (size_t dpy=0 ; dpy<mDisplays.size() ; dpy++) {
++          sp<DisplayDevice> hw(mDisplays[dpy]);
++	  hw->mLayersSwapRequired = true;
++       }
++#endif
+         mLayersRemoved = false;
+         mVisibleRegionsDirty = true;
+         const size_t count = layers.size();
+@@ -1784,6 +1815,10 @@
+         // subtract the opaque region covered by the layers above us
+         visibleRegion.subtractSelf(aboveOpaqueLayers);
+ 
++#ifdef MTK_MT6577
++        mContentsDirty |= layer->contentDirty;
++#endif
++
+         // compute this layer's dirty region
+         if (layer->contentDirty) {
+             // we need to invalidate the whole region
+@@ -1865,6 +1900,14 @@
+         const Region& inDirtyRegion)
+ {
+     Region dirtyRegion(inDirtyRegion);
++
++#ifdef MTK_MT6577
++    if (true == inDirtyRegion.isEmpty()) {
++        if(hw->mLayersSwapRequired)
++            hw->mLayersSwapRequired = false;
++        return;
++    }
++#endif
+ 
+     // compute the invalid region
+     hw->swapRegion.orSelf(dirtyRegion);
+@@ -2481,6 +2524,11 @@
+     };
+     sp<MessageBase> msg = new MessageScreenAcquired(*this, display);
+     postMessageSync(msg);
++
++#ifdef MTK_MT6577
++    usleep(16667);
++    property_set("sys.ipowin.done", "1");
++#endif
+ }
+ 
+ void SurfaceFlinger::blank(const sp<IBinder>& display) {
+@@ -2964,6 +3012,13 @@
+ }
+ 
+ void SurfaceFlinger::repaintEverything() {
++#ifdef MTK_MT6577
++    for (size_t dpy=0 ; dpy<mDisplays.size() ; dpy++) {
++        sp<DisplayDevice> hw(mDisplays[dpy]);
++        hw->mLayersSwapRequired = true;
++    }
++#endif
++
+     android_atomic_or(1, &mRepaintEverything);
+     signalTransaction();
+ }
+@@ -3509,6 +3564,62 @@
+ 
+ // ---------------------------------------------------------------------------
+ 
++#ifdef MTK_MT6577
++bool SurfaceFlinger::getAndClearLayersSwapRequired(int32_t id) {
++		sp<DisplayDevice> hw = NULL;
++    for (size_t dpy = 0; dpy < mDisplays.size(); dpy++) {
++        hw = mDisplays[dpy];
++        if (id == hw->getHwcDisplayId())
++            break;
++    }
++
++    bool ret = hw->mLayersSwapRequired;
++        hw->mLayersSwapRequired = false;
++    return ret;
++}
++
++void SurfaceFlinger::checkLayersSwapRequired(
++    sp<const DisplayDevice>& hw,
++    const bool prevGlesComposition)
++{
++    size_t count = 0;
++    // case 1: Draw and swap if layer removed
++    // case 2: Draw and swap if layer content updated (by transaction) in drawing state
++    // case 4: Draw and swap if debug region is turned on
++    // case 6: Draw and swap if screen is about to return
++    // case 7: Draw and swap if region is invalidated
++    if (!hw->mLayersSwapRequired) {
++        // case 3: Draw and swap if layer buffer dirty (by queueBuffer() and dequeueBuffer())
++        // case 5: When the texture is created, draw and swap to clear the black screen (ONLY ONCE)
++        // case 6: When all layers were handled by HWC but currently need GPU to handle some layers
++
++        HWComposer& hwc(getHwComposer());
++
++        const int32_t id = hw->getHwcDisplayId();
++        if (!prevGlesComposition && hwc.hasGlesComposition(id)) {
++            hw->mLayersSwapRequired = true;
++            return;
++        }
++
++        if (id < 0 || hwc.initCheck() != NO_ERROR) return;
++
++        const Vector< sp<Layer> >& layers(hw->getVisibleLayersSortedByZ());
++        const size_t count = layers.size();
++        HWComposer::LayerListIterator cur = hwc.begin(id);
++        const HWComposer::LayerListIterator end = hwc.end(id);
++        for (size_t i = 0; cur != end && i < count; ++i, ++cur) {
++            const sp<Layer>& layer(layers[i]);
++            if (((cur->getCompositionType() == HWC_FRAMEBUFFER) &&
++                 layer->mBufferDirty) || (layer->mBufferRefCount <= 1)) {
++                hw->mLayersSwapRequired = true;
++                break;
++            }
++        }
++    }
++}
++
++#endif
++
+ }; // namespace android
+ 
+ #ifndef USE_MHEAP_SCREENSHOT
+diff --git a/services/surfaceflinger/SurfaceFlinger.h b/services/surfaceflinger/SurfaceFlinger.h
+index 40a2401..8082785 100644
+--- a/services/surfaceflinger/SurfaceFlinger.h
++++ b/services/surfaceflinger/SurfaceFlinger.h
+@@ -139,6 +139,12 @@
+     static bool sExtendedMode;
+     static bool isExtendedMode() { return sExtendedMode; };
+ #endif
++#ifdef MTK_MT6577
++    static bool mContentsDirty;
++
++    bool getAndClearLayersSwapRequired(int32_t id);
++    void checkLayersSwapRequired (sp<const DisplayDevice>& hw, const bool prevGlesComposition);
++#endif
+ private:
+     friend class Client;
+     friend class DisplayEventConnection;
+diff --git a/services/surfaceflinger/SurfaceFlingerConsumer.cpp b/services/surfaceflinger/SurfaceFlingerConsumer.cpp
+index 6dc093e..4886851 100644
+--- a/services/surfaceflinger/SurfaceFlingerConsumer.cpp
++++ b/services/surfaceflinger/SurfaceFlingerConsumer.cpp
+@@ -154,6 +154,10 @@
+     return prevVsync + hwcLatency * vsyncPeriod + extraPadding;
+ }
+ 
++#ifdef MTK_MT6577
++int SurfaceFlingerConsumer::getConnectedApi () { return (bq != 0) ? bq->getConnectedApi () : -1; }
++#endif
++
+ // ---------------------------------------------------------------------------
+ }; // namespace android
+ 
+diff --git a/services/surfaceflinger/SurfaceFlingerConsumer.h b/services/surfaceflinger/SurfaceFlingerConsumer.h
+index 688ad32..b9609a0 100644
+--- a/services/surfaceflinger/SurfaceFlingerConsumer.h
++++ b/services/surfaceflinger/SurfaceFlingerConsumer.h
+@@ -28,7 +28,11 @@
+ class SurfaceFlingerConsumer : public GLConsumer {
+ public:
+     SurfaceFlingerConsumer(const sp<BufferQueue>& bq, uint32_t tex)
++#ifndef MTK_MT6577
+         : GLConsumer(bq, tex, GLConsumer::TEXTURE_EXTERNAL, false)
++#else
++        : GLConsumer(bq, tex, GLConsumer::TEXTURE_EXTERNAL, false), bq (bq)
++#endif
+     {}
+ 
+     class BufferRejecter {
+@@ -54,6 +58,11 @@
+     // must be called from SF main thread
+     bool getTransformToDisplayInverse() const;
+ 
++#ifdef MTK_MT6577
++    // get connected api type, for buffer data conversion condition (aux and hwc)
++    int getConnectedApi();
++#endif
++
+ private:
+     nsecs_t computeExpectedPresent();
+ 
+@@ -61,6 +70,9 @@
+     // it is displayed onto. This is applied after GLConsumer::mCurrentTransform.
+     // This must be set/read from SurfaceFlinger's main thread.
+     bool mTransformToDisplayInverse;
++#ifdef MTK_MT6577
++    sp<BufferQueue> bq;
++#endif
+ };
+ 
+ // ----------------------------------------------------------------------------

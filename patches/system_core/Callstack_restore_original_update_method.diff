@@ -1,0 +1,36 @@
+From 634b81aa1614439add9eb70f9c46cca6d292a65b Mon Sep 17 00:00:00 2001
+From: xplodwild <xplod@ouverta.fr>
+Date: Sun, 05 Jan 2014 17:35:41 +0100
+Subject: [PATCH] libutils: CallStack: Restore original update method
+
+Change-Id: Ie8501b2d6246204f2a4c1b1329aef57db0b9f930
+---
+
+diff --git a/include/utils/CallStack.h b/include/utils/CallStack.h
+index cae64a2..1ca4eed 100644
+--- a/include/utils/CallStack.h
++++ b/include/utils/CallStack.h
+@@ -73,6 +73,8 @@
+              android_LogPriority priority = ANDROID_LOG_DEBUG,
+              const char* prefix = 0) const;
+ #ifdef MTK_MT6577
++    void update(int32_t ignoreDepth=1, int32_t maxDepth=MAX_DEPTH);
++
+     // Dump a stack trace to the log
+     void dump(const char* prefix = 0) const;
+ #endif
+diff --git a/libutils/CallStack.cpp b/libutils/CallStack.cpp
+index f911e13..f797983 100644
+--- a/libutils/CallStack.cpp
++++ b/libutils/CallStack.cpp
+@@ -115,6 +115,10 @@
+ }
+ 
+ #ifdef MTK_MT6577
++void CallStack::update(int32_t ignoreDepth, int32_t maxDepth) {
++    update(ignoreDepth, maxDepth, CURRENT_THREAD);
++}
++
+ void CallStack::dump(const char* prefix) const {
+     backtrace_symbol_t symbols[mCount];
+ 

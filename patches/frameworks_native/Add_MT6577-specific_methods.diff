@@ -1,0 +1,92 @@
+From 4c4bf2b4fc6aa3018bc1054f5478a8097490793e Mon Sep 17 00:00:00 2001
+From: xplodwild <xplod@ouverta.fr>
+Date: Tue, 08 Oct 2013 23:07:57 +0200
+Subject: [PATCH] [1/2] GraphicBufferMapper: Add MT6577-specific methods
+
+Change-Id: I06bda9426ede59a4681aba903590b9e17fdee0b6
+---
+
+diff --git a/include/ui/GraphicBufferMapper.h b/include/ui/GraphicBufferMapper.h
+index 59cf6fc..4af7a2e 100644
+--- a/include/ui/GraphicBufferMapper.h
++++ b/include/ui/GraphicBufferMapper.h
+@@ -54,6 +54,10 @@
+     status_t getphys(buffer_handle_t handle, void** paddr);
+ #endif
+ 
++#ifdef MTK_MT6577
++    status_t getIonFd(buffer_handle_t handle, int *idx, int *num);
++#endif
++
+     // dumps information about the mapping of this handle
+     void dump(buffer_handle_t handle);
+ 
+@@ -61,6 +65,11 @@
+     friend class Singleton<GraphicBufferMapper>;
+     GraphicBufferMapper();
+     gralloc_module_t const *mAllocMod;
++
++#ifdef MTK_MT6577
++    ~GraphicBufferMapper();
++    extra_device_t *mExtraDev;
++#endif
+ };
+ 
+ // ---------------------------------------------------------------------------
+diff --git a/libs/ui/Android.mk b/libs/ui/Android.mk
+index cd81c25..aaf0920 100644
+--- a/libs/ui/Android.mk
++++ b/libs/ui/Android.mk
+@@ -50,6 +50,10 @@
+ LOCAL_CFLAGS += -DHAVE_PIXEL_FORMAT_INFO
+ endif
+ 
++ifeq ($(TARGET_BOARD_PLATFORM),mt6577)
++LOCAL_CFLAGS += -DMTK_MT6577
++endif
++
+ LOCAL_MODULE:= libui
+ 
+ include $(BUILD_SHARED_LIBRARY)
+diff --git a/libs/ui/GraphicBufferMapper.cpp b/libs/ui/GraphicBufferMapper.cpp
+index cfbf32c..ee06644 100644
+--- a/libs/ui/GraphicBufferMapper.cpp
++++ b/libs/ui/GraphicBufferMapper.cpp
+@@ -46,6 +46,13 @@
+     }
+ }
+ 
++#ifdef MTK_MT6577
++GraphicBufferMapper::~GraphicBufferMapper()
++{
++    gralloc_extra_close(mExtraDev);
++}
++#endif
++
+ status_t GraphicBufferMapper::registerBuffer(buffer_handle_t handle)
+ {
+     ATRACE_CALL();
+@@ -122,5 +129,23 @@
+ }
+ #endif
+ 
++#ifdef MTK_MT6577
++status_t GraphicBufferMapper::getIonFd(buffer_handle_t handle, int *idx, int *num)
++{
++    ATRACE_CALL();
++    status_t err;
++
++    if (!mExtraDev) {
++        ALOGE("gralloc extra device is not supported");
++        return INVALID_OPERATION;
++    }
++
++    err = mExtraDev->getIonFd(mExtraDev, handle, idx, num);
++
++    ALOGW_IF(err, "getIonFd(...) failed %d (%s)", err, strerror(-err));
++    return err;
++}
++#endif
++
+ // ---------------------------------------------------------------------------
+ }; // namespace android

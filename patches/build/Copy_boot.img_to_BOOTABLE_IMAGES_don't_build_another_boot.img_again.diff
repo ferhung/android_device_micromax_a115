@@ -1,0 +1,24 @@
+From 75b1d9bed6e2709db82c13e5df21bb25c54c4b98 Mon Sep 17 00:00:00 2001
+From: Dr-Shadow <xxdrshadowxx@gmail.com>
+Date: Thu, 13 Mar 2014 22:52:18 +0100
+Subject: [PATCH] Build : Copy boot.img to BOOTABLE_IMAGES don't build another boot.img again
+
+Change-Id: Idaa8d4fb40386395cf906b00607f99e762481b11
+---
+
+diff --git a/core/Makefile b/core/Makefile
+index 3a451f0..0d5e770 100644
+--- a/core/Makefile
++++ b/core/Makefile
+@@ -1299,6 +1299,11 @@
+ ifdef BOARD_KERNEL_PAGESIZE
+ 	$(hide) echo "$(BOARD_KERNEL_PAGESIZE)" > $(zip_root)/RECOVERY/pagesize
+ endif
++ifdef TARGET_USE_BUILT_BOOTIMAGE
++	@# Copy boot.img to bootable_images
++	$(hide) mkdir -p $(zip_root)/BOOTABLE_IMAGES
++	$(hide) $(ACP) $(INSTALLED_BOOTIMAGE_TARGET) $(zip_root)/BOOTABLE_IMAGES
++endif
+ 	@# Components of the boot image
+ 	$(hide) mkdir -p $(zip_root)/BOOT
+ 	$(hide) $(call package_files-copy-root, \
